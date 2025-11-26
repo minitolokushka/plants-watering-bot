@@ -87,6 +87,13 @@ PLANTS = {
         "interval_func": lambda current: timedelta(days=10),
         "interval_text": "примерно раз в 1–2 недели (в боте — каждые 10 дней)",
     },
+    "spray_leaves": {
+        "name": "Листики",
+        "amount": "опрыскать водой 💧",
+        "first_date": dt(2025, 11, 28),  # старт с 28 ноября 2025
+        "interval_func": lambda current: timedelta(days=7),
+        "interval_text": "раз в неделю — напоминание попшикать листики",
+    },
 }
 
 
@@ -117,7 +124,14 @@ LOGS = load_logs()
 
 def plant_message(plant_id: str) -> str:
     p = PLANTS[plant_id]
-    if plant_id == "succulents":
+
+    if plant_id == "spray_leaves":
+        return (
+            "Попшикай листики! 🍃\n\n"
+            "Пройди по растениям и аккуратно опрыскай листья водой.\n"
+            "Отметь, когда всё сделаешь."
+        )
+    elif plant_id == "succulents":
         return (
             f"🌵 {p['name']}\n\n"
             f"Проверь грунт. Если полностью сухой — полей {p['amount']}.\n"
@@ -129,16 +143,6 @@ def plant_message(plant_id: str) -> str:
             f"Пора полить: {p['amount']}.\n"
             f"Отметь, когда полила."
         )
-
-def make_keyboard(plant_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("✅ Полила", callback_data=f"watered:{plant_id}"),
-                InlineKeyboardButton("⏰ Не сейчас", callback_data=f"later:{plant_id}"),
-            ]
-        ]
-    )
 
 
 # === JOB'Ы ===
@@ -186,9 +190,15 @@ def send_plant_reminder(context: CallbackContext):
 def send_hourly_reminder(context: CallbackContext):
     plant_id = context.job.context["plant_id"]
     p = PLANTS[plant_id]
+
+    if plant_id == "spray_leaves":
+        text = "⏰ Напоминание: попшикай листики 🍃 (если ещё не попшикала)."
+    else:
+        text = f"⏰ Напоминание: полей {p['name'].lower()} (если ещё не полила)."
+
     context.bot.send_message(
         chat_id=CHAT_ID,
-        text=f"⏰ Напоминание: полей {p['name'].lower()} (если ещё не полила).",
+        text=text,
     )
 
 def send_autopot_reminder(context: CallbackContext):
@@ -286,9 +296,23 @@ def button_handler(update: Update, context: CallbackContext):
         schedule_next_watering(context, plant_id, from_time=now)
 
     elif action == "later":
-        query.answer(text="Хорошо, напомню ещё раз позже 🙂", show_alert=False)
-        # почасовые уже включены
+    # Большой наглядный попап по центру экрана
+    query.answer(
+        text="Окей, отложили 🌿\nБуду напоминать каждый час.",
+        show_alert=True,
+    )
 
+    # Обновляем текст сообщения — чтобы было визуально понятно, что случилось
+    new_text = (
+        plant_message(plant_id)
+        + "\n\n⏰ Статус: жду, когда ты польёшь. Буду напоминать каждый час."
+    )
+
+    query.edit_message_text(
+        text=new_text,
+        reply_markup=make_keyboard(plant_id),
+    )
+    # почасовые напоминания уже работают — ничего дополнительно не трогаем
 
 def text_handler(update: Update, context: CallbackContext):
     text = (update.message.text or "").strip()
